@@ -1,0 +1,37 @@
+/* =========================================================================
+   LOCATION-AWARE BANNER — Styling
+   ========================================================================= */
+
+.location-banner-container {
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+  font-family: var(--banner-font, Inter, sans-serif);
+  font-size: var(--banner-font-size, 16px);
+  font-weight: 500;
+  color: var(--banner-text-color, #000);
+  background: var(--banner-bg, #fff);
+  text-transform: uppercase;
+  line-height: 1.4;
+  padding: 8px 15px;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.location-banner-container a {
+  color: var(--banner-link-color, #000);
+  text-decoration: underline;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.location-banner-container a:hover {
+  opacity: 0.8;
+}
+
+@media (max-width: 767px) {
+  .location-banner-container {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+}

@@ -30,8 +30,8 @@
     const root = document.documentElement;
     root.style.setProperty("--primary-color", config.primaryColor);
     root.style.setProperty("--text-color", config.textColor);
-    root.style.setProperty("--contentfont", config.contentFont);
-    root.style.setProperty("--headlinefont", config.headlineFont);
+    // Do NOT touch --contentfont or --headlinefont here:
+    // those are expected to be defined by the host site’s CSS.
   }
 
   /* ---------- FETCH EVENTS ---------- */
@@ -433,4 +433,3 @@
     });
   }
 })(window);
-

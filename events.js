@@ -1,5 +1,5 @@
 /* =========================================================================
-   EVENTS MODULE — Fetch, Render, Geolocate, Ticket Buttons & Waitlist Popup
+   EVENTS MODULE — Fetch, Render, Geolocate, Ticket Buttons & Bottom Sheets
    ========================================================================= */
 
 (function (global) {
@@ -9,7 +9,7 @@
     locationId: "",
     eventPortalToken: "",
     waitlistFormId: "",
-    soldOutFormId: "",
+    soldOutFormId: "",         // used for Sold Out bottom sheet
     primaryColor: "#F2FEC1",
     textColor: "#605858",
     contentFont: "var(--contentfont)",
@@ -165,11 +165,14 @@
         g.showtimeIds.forEach((id) => groupedIds.add(id));
         const range = formatRange(g.showtimeDates);
         const t = g.ticketLink;
-        const btn =
-          t.linkType === "Join Waitlist" && t.ticketLink === "popup"
-            ? `<a href="javascript:void(0)" class="tickets-info" style="background-color:${t.buttonColor}" onclick="joinWaitlistForm('${venue}','${range}')">${t.buttonText}</a>`
-            : `<a href="${t.ticketLink}" class="tickets-info" style="background-color:${t.buttonColor}" target="_blank">${t.buttonText}</a>`;
-        ticketsHTML += `<div class="TicketP">${btn}</div>`;
+
+        const btnHtml = buildTicketButton({
+          ticketLink: t,
+          venue,
+          labelDate: range,
+        });
+
+        ticketsHTML += `<div class="TicketP">${btnHtml}</div>`;
       });
 
       // ungrouped showtimes
@@ -177,15 +180,12 @@
         .filter((s) => !groupedIds.has(s.id))
         .forEach((s) => {
           (s.ticketLinks || []).forEach((t) => {
-            const btn =
-              t.linkType === "Join Waitlist" && t.ticketLink === "popup"
-                ? `<a href="javascript:void(0)" class="tickets-info" style="background-color:${
-                    t.buttonColor
-                  }" onclick="joinWaitlistForm('${venue}','${fmtShort(
-                    s.date
-                  )}')">${t.buttonText}</a>`
-                : `<a href="${t.ticketLink}" class="tickets-info" style="background-color:${t.buttonColor}" target="_blank">${t.buttonText}</a>`;
-            ticketsHTML += `<div class="TicketP">${btn}</div>`;
+            const btnHtml = buildTicketButton({
+              ticketLink: t,
+              venue,
+              labelDate: fmtShort(s.date),
+            });
+            ticketsHTML += `<div class="TicketP">${btnHtml}</div>`;
           });
         });
 
@@ -196,15 +196,35 @@
               end ? `${fmtShort(start)} - ${fmtLong(end)}` : fmtLong(start)
             } ${nearBadge}</p></div>
             <div class="details"><h3>${city}</h3></div>
-            <div class="details"><p>${venue}</p>${
-        title ? `<p class="event-title">${title}</p>` : ""
-      }</div>
+            <div class="details">
+              <p>${venue}</p>
+              ${title ? `<p class="event-title">${title}</p>` : ""}
+            </div>
           </div>
           <div class="tickets-list">${ticketsHTML}</div>
         </div>`;
     });
 
     container.innerHTML = html;
+  }
+
+  // centralised button builder: normal link vs waitlist vs sold out
+  function buildTicketButton({ ticketLink: t, venue, labelDate }) {
+    const color = t.buttonColor || "#000";
+    const text = t.buttonText || "";
+
+    // Waitlist popup
+    if (t.linkType === "Join Waitlist" && t.ticketLink === "popup") {
+      return `<a href="javascript:void(0)" class="tickets-info" style="background-color:${color}" onclick="joinWaitlistForm('${venue}','${labelDate}')">${text}</a>`;
+    }
+
+    // Sold Out popup (same bottom sheet UX, different form id)
+    if (t.linkType === "Sold Out" && t.ticketLink === "popup") {
+      return `<a href="javascript:void(0)" class="tickets-info tickets-info-soldout" style="background-color:${color}" onclick="openSoldOutForm('${venue}','${labelDate}')">${text}</a>`;
+    }
+
+    // Default: external link
+    return `<a href="${t.ticketLink}" class="tickets-info" style="background-color:${color}" target="_blank" rel="noopener noreferrer">${text}</a>`;
   }
 
   /* ---------- HELPERS ---------- */
@@ -233,7 +253,7 @@
       "Nov",
       "Dec",
     ];
-    return `${months[m - 1]} ${parseInt(day)}, ${y}`;
+    return `${months[m - 1]} ${parseInt(day, 10)}, ${y}`;
   }
   function fmtShort(d) {
     if (!d) return "";
@@ -252,13 +272,13 @@
       "Nov",
       "Dec",
     ];
-    return `${months[m - 1]} ${parseInt(day)}`;
+    return `${months[m - 1]} ${parseInt(day, 10)}`;
   }
   function fmtTime(t) {
     if (!t) return "";
     const [h, m] = t.split(":");
-    const hour = parseInt(h) % 12 || 12;
-    const ampm = parseInt(h) >= 12 ? "PM" : "AM";
+    const hour = parseInt(h, 10) % 12 || 12;
+    const ampm = parseInt(h, 10) >= 12 ? "PM" : "AM";
     return `${hour}:${m} ${ampm}`;
   }
   function getDateTime(e) {
@@ -283,15 +303,45 @@
     const overlay = document.getElementById("waitlistOverlay");
     const sheet = document.getElementById("waitlistBottomSheet");
     const iframe = sheet?.querySelector(".waitlist-form-container");
-    if (!overlay || !sheet || !iframe) return;
+    if (!overlay || !sheet || !iframe || !config.waitlistFormId) return;
+
     const base = `https://api.leadconnectorhq.com/widget/form/${config.waitlistFormId}`;
     const url = new URL(base);
     if (venue || date)
       url.searchParams.set("waitlist", `${venue} ${date}`.trim());
+
     iframe.src = url.toString();
     overlay.classList.add("active");
     sheet.classList.add("active");
     document.body.style.overflow = "hidden";
+
+    const close = () => {
+      overlay.classList.remove("active");
+      sheet.classList.remove("active");
+      document.body.style.overflow = "";
+    };
+    overlay.onclick = close;
+    const closeBtn = sheet.querySelector(".waitlist-close-btn");
+    if (closeBtn) closeBtn.onclick = close;
+  };
+
+  /* ---------- SOLD OUT (same bottom sheet) ---------- */
+  global.openSoldOutForm = function (venue = "", date = "") {
+    const overlay = document.getElementById("waitlistOverlay");
+    const sheet = document.getElementById("waitlistBottomSheet");
+    const iframe = sheet?.querySelector(".waitlist-form-container");
+    if (!overlay || !sheet || !iframe || !config.soldOutFormId) return;
+
+    const base = `https://api.leadconnectorhq.com/widget/form/${config.soldOutFormId}`;
+    const url = new URL(base);
+    if (venue || date)
+      url.searchParams.set("soldout", `${venue} ${date}`.trim());
+
+    iframe.src = url.toString();
+    overlay.classList.add("active");
+    sheet.classList.add("active");
+    document.body.style.overflow = "hidden";
+
     const close = () => {
       overlay.classList.remove("active");
       sheet.classList.remove("active");
@@ -309,9 +359,11 @@
       const overlay = document.getElementById("waitlistOverlay");
       const header = sheet?.querySelector(".waitlist-bottom-sheet-header");
       if (!sheet || !overlay || !header) return;
+
       let dragging = false,
         startY = 0,
         currentY = 0;
+
       const move = (y) => {
         const delta = Math.max(0, y - startY);
         sheet.style.transform =
@@ -322,6 +374,7 @@
           Math.max(0.25, 1 - delta / window.innerHeight)
         );
       };
+
       const end = () => {
         if (!dragging) return;
         dragging = false;
@@ -329,6 +382,7 @@
         const threshold = Math.min(150, sheet.offsetHeight * 0.33);
         sheet.style.transition = "transform .3s ease";
         overlay.style.transition = "opacity .25s ease";
+
         if (delta > threshold) {
           overlay.classList.remove("active");
           sheet.classList.remove("active");
@@ -340,19 +394,13 @@
               : "translateY(0)";
           overlay.style.opacity = "1";
         }
+
         setTimeout(() => {
           sheet.style.transition = "";
           overlay.style.transition = "";
         }, 300);
       };
-      header.addEventListener("mousedown", (e) => {
-        dragging = true;
-        startY = e.clientY;
-        sheet.style.transition = "none";
-        overlay.style.transition = "none";
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-      });
+
       const onMouseMove = (e) => {
         currentY = e.clientY;
         if (dragging) move(currentY);
@@ -362,6 +410,16 @@
         document.removeEventListener("mouseup", onMouseUp);
         end();
       };
+
+      header.addEventListener("mousedown", (e) => {
+        dragging = true;
+        startY = e.clientY;
+        sheet.style.transition = "none";
+        overlay.style.transition = "none";
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+
       header.addEventListener("touchstart", (e) => {
         dragging = true;
         startY = e.touches[0].clientY;

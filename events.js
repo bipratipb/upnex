@@ -1,270 +1,394 @@
-/* =========================================================================
-   EVENTS WIDGET — Layout, Styling & Waitlist Bottom Sheet
-   ========================================================================= */
+(function (global) {
+  const { DateTime } = luxon;
 
-/* ---------- Root Variables ---------- */
-:root {
-  --events-text-color: #605858; /* default fallback */
-}
+  let config = {
+    locationId: "",
+    eventPortalToken: "",
+    waitlistFormId: "",
+    soldOutFormId: "",
+    nearYouThreshold: 100,
+    textColor: "#605858"
+  };
 
-/* ---------- Root Container ---------- */
-.event-container,
-.AllShows,
-#all-events {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+  let globalEvents = [];
+  let locationProcessed = false;
 
-.event-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  padding: 0.8rem;
-  margin-bottom: 10px;
-  gap: 1rem;
-  border-bottom: 1px dashed #000;
-}
+  global.initEvents = function (userConfig = {}) {
+    config = { ...config, ...userConfig };
 
-/* left column */
-.event-info-column {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  flex: 2;
-  font-family: var(--contentfont);
-}
+    // NEW: Apply text color to CSS variable
+    if (config.textColor) {
+      document.documentElement.style.setProperty(
+        "--events-text-color",
+        config.textColor
+      );
+    }
 
-/* Date */
-.date p {
-  font-size: 18px;
-  color: var(--events-text-color);
-  margin: 0;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+    getData();
+    attachBottomSheetDragHandlers();
+  };
 
-/* Details */
-.details h3 {
-    color: var(--events-text-color);
-
-  text-transform: uppercase;
-  font-family: var(--headlinefont);
-  font-weight: 900;
-  margin: 0;
-}
-
-.details p {
-  font-size: 20px;
-  margin: 0;
-  color: var(--events-text-color);
-  line-height: 1.4;
-}
-
-.details .event-title {
-  font-style: italic;
-}
-
-/* Ticket column */
-.tickets-list {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  min-width: 250px;
-}
-
-/* Ticket button */
-.tickets-info {
-  background: #000;
-  color: #fff;
-  padding: 10px 16px;
-  font-size: 18px;
-  font-family: var(--headlinefont);
-  font-weight: 800;
-  border-radius: 1000px;
-  text-transform: uppercase;
-  text-decoration: none;
-  margin-bottom: 5px;
-  display: inline-block;
-  text-align: center;
-  transition: 0.2s ease;
-  cursor: pointer;
-}
-
-.tickets-info:hover {
-  background: #000;
-  color: gold;
-}
-
-/* Showtime row */
-.showtime-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 6px;
-}
-
-/* remove forced text color */
-.showtime-date p {
-  margin: 0;
-  font-size: 18px;
-  color: var(--events-text-color);
-}
-
-.TicketP {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-/* NEAR YOU badge */
-.badge-near-you {
-  display: inline-block;
-  background: yellow;
-  color: #000;
-  font-weight: bold;
-  font-size: 14px;
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin-left: 8px;
-}
-
-/* =========================================================================
-   WAITLIST BOTTOM SHEET
-   ========================================================================= */
-
-#waitlistOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
-}
-
-#waitlistOverlay.active {
-  opacity: 1;
-  visibility: visible;
-}
-
-#waitlistBottomSheet {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%) translateY(100%);
-  width: 100%;
-  max-width: 720px;
-  background: #05090c;
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  height: 65vh;
-  transition: transform 0.3s ease;
-  display: flex;
-  flex-direction: column;
-}
-
-.waitlist-bottom-sheet-header {
-  padding: 16px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-  touch-action: none;
-  cursor: grab;
-}
-
-.waitlist-drag-handle {
-  width: 50px;
-  height: 5px;
-  border-radius: 3px;
-  background: #555;
-}
-
-.waitlist-close-btn {
-  position: absolute;
-  top: 12px;
-  right: 16px;
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #ccc;
-}
-
-.waitlist-bottom-sheet-content {
-  padding: 20px;
-  flex: 1;
-  overflow-y: auto;
-  color: #fff;
-}
-
-/* removed Roboto — inherits from your page */
-.waitlist-bottom-sheet-content h1 {
-  font-family: var(--headlinefont);
-  font-size: 20px;
-  font-weight: 500;
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-.waitlist-form-container {
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-
-/* =========================================================================
-   RESPONSIVE
-   ========================================================================= */
-
-@media (max-width: 767px) {
-  .event-card {
-    flex-direction: column;
-    align-items: center;
+  /* ---------- FETCH EVENTS ---------- */
+  async function getData() {
+    const res = await fetchData();
+    const events = res?.data?.events || [];
+    globalEvents = events;
+    await formatData(events, null);
+    getUserLocationAsync();
   }
 
-  .tickets-list {
-    align-items: center;
-    width: 100%;
-    min-width: unset;
+  async function fetchData() {
+    const url = `https://events-portal-sage.vercel.app/api/events/${config.locationId}`;
+    try {
+      const r = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${config.eventPortalToken}`,
+          Accept: "application/json",
+        },
+      });
+      return await r.json();
+    } catch (err) {
+      console.error("Event fetch failed:", err);
+      return { data: { events: [] } };
+    }
   }
 
-  .tickets-info {
-    font-size: 16px;
-    padding: 8px 12px;
-    max-width: 90vw;
+  /* ---------- GEOLOCATION ---------- */
+  async function getUserLocationAsync() {
+    if (locationProcessed) return;
+    locationProcessed = true;
+
+    let userLoc = null;
+    let eventsWithDist = globalEvents;
+
+    try {
+      userLoc = await getUserLocation();
+      if (userLoc && !userLoc.permissionDenied) {
+        eventsWithDist = globalEvents.map((ev) => {
+          const lat = parseFloat(ev.latitude);
+          const lon = parseFloat(ev.longitude);
+          if (isFinite(lat) && isFinite(lon)) {
+            const d = calcDistance(userLoc.lat, userLoc.lon, lat, lon);
+            return { ...ev, distance: d };
+          }
+          return { ...ev, distance: Infinity };
+        });
+
+        const nearby = eventsWithDist.filter(
+          (e) => e.distance <= config.nearYouThreshold
+        );
+        const far = eventsWithDist.filter(
+          (e) => e.distance > config.nearYouThreshold
+        );
+        nearby.sort((a, b) => getDateTime(a) - getDateTime(b));
+        far.sort((a, b) => getDateTime(a) - getDateTime(b));
+        const ordered = [...nearby, ...far];
+        await formatData(ordered, userLoc);
+        eventsWithDist = ordered;
+      }
+    } catch (e) {
+      console.warn("Location failed:", e);
+    } finally {
+      const detail = { userLocation: userLoc, events: eventsWithDist };
+      document.dispatchEvent(new CustomEvent("eventsDataReady", { detail }));
+    }
   }
 
-  .details p {
-    font-size: 18px;
-    text-align: center;
+  function getUserLocation() {
+    if (!("geolocation" in navigator))
+      return Promise.resolve({ permissionDenied: true });
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) =>
+          resolve({
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            permissionDenied: false,
+          }),
+        () => resolve({ permissionDenied: true }),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
   }
 
-  .details h3 {
-    font-size: 22px;
-    text-align: center;
+  /* ---------- FORMAT DATA ---------- */
+  async function formatData(events, userLoc) {
+    const now = DateTime.utc();
+    const buffer = 6;
+    const filtered = events.filter((e) => {
+      if (e.status !== "live" || !e.startDate) return false;
+      const start = DateTime.fromISO(
+        `${e.startDate}T${e.startTime || "00:00"}`,
+        { zone: "utc" }
+      );
+      const end = e.endDate
+        ? DateTime.fromISO(`${e.endDate}T23:59:59`, { zone: "utc" })
+        : start;
+      return end.plus({ hours: buffer }) >= now;
+    });
+    if (!userLoc) filtered.sort((a, b) => getDateTime(a) - getDateTime(b));
+    displayEvents(filtered, userLoc);
   }
 
-  .date p {
-    font-size: 20px;
-    text-align: center;
+  /* ---------- DISPLAY EVENTS ---------- */
+  function displayEvents(events, userLoc) {
+    const container = document.getElementById("all-events");
+    if (!container) return;
+
+    let html = "";
+
+    events.forEach((ev) => {
+      const nearBadge =
+        userLoc && ev.distance <= config.nearYouThreshold
+          ? `<span class="badge-near-you">NEAR YOU</span>`
+          : "";
+
+      const venue = ev.displayVenue || "";
+      const city = ev.displayCity || "";
+      const title = ev.additionalInfo || "";
+      const start = ev.startDate || "";
+      const end = ev.endDate || "";
+
+      let ticketsHTML = "";
+      const groupedIds = new Set();
+
+      (ev.ticketLinkGroups || []).forEach((g) => {
+        g.showtimeIds.forEach((id) => groupedIds.add(id));
+        const range = formatRange(g.showtimeDates);
+        const t = g.ticketLink;
+
+        const btnHtml = buildTicketButton({
+          ticketLink: t,
+          venue,
+          labelDate: range,
+        });
+
+        ticketsHTML += `<div class="TicketP">${btnHtml}</div>`;
+      });
+
+      (ev.showtimes || [])
+        .filter((s) => !groupedIds.has(s.id))
+        .forEach((s) => {
+          (s.ticketLinks || []).forEach((t) => {
+            const btnHtml = buildTicketButton({
+              ticketLink: t,
+              venue,
+              labelDate: fmtShort(s.date),
+            });
+            ticketsHTML += `<div class="TicketP">${btnHtml}</div>`;
+          });
+        });
+
+      html += `
+        <div class="event-card">
+          <div class="event-info-column">
+            <div class="date"><p>${
+              end ? `${fmtShort(start)} - ${fmtLong(end)}` : fmtLong(start)
+            } ${nearBadge}</p></div>
+            <div class="details"><h3>${city}</h3></div>
+            <div class="details">
+              <p>${venue}</p>
+              ${title ? `<p class="event-title">${title}</p>` : ""}
+            </div>
+          </div>
+          <div class="tickets-list">${ticketsHTML}</div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
   }
 
-  #waitlistBottomSheet {
-    height: 80vh;
-    max-width: 100%;
-    left: 0;
-    transform: translateY(100%);
+  function buildTicketButton({ ticketLink: t, venue, labelDate }) {
+    const color = t.buttonColor || "#000";
+    const text = t.buttonText || "";
+
+    if (t.linkType === "Join Waitlist" && t.ticketLink === "popup") {
+      return `<a href="javascript:void(0)" class="tickets-info" style="background-color:${color}" onclick="joinWaitlistForm('${venue}','${labelDate}')">${text}</a>`;
+    }
+
+    if (t.linkType === "Sold Out" && t.ticketLink === "popup") {
+      return `<a href="javascript:void(0)" class="tickets-info tickets-info-soldout" style="background-color:${color}" onclick="openSoldOutForm('${venue}','${labelDate}')">${text}</a>`;
+    }
+
+    return `<a href="${t.ticketLink}" class="tickets-info" style="background-color:${color}" target="_blank" rel="noopener noreferrer">${text}</a>`;
   }
 
-  #waitlistBottomSheet.active {
-    transform: translateY(0);
+  function formatRange(dates) {
+    if (!dates?.length) return "";
+    const unique = Array.from(new Set(dates)).sort();
+    if (unique.length === 1) return fmtLong(unique[0]);
+    const start = unique[0],
+      end = unique[unique.length - 1];
+    return `${fmtShort(start)} - ${fmtLong(end)}`;
   }
-}
+  function fmtLong(d) {
+    if (!d) return "";
+    const [y, m, day] = d.split("-");
+    const months = [
+      "Jan","Feb","Mar","Apr","May","Jun",
+      "Jul","Aug","Sep","Oct","Nov","Dec"
+    ];
+    return `${months[m - 1]} ${parseInt(day, 10)}, ${y}`;
+  }
+  function fmtShort(d) {
+    if (!d) return "";
+    const [y, m, day] = d.split("-");
+    const months = [
+      "Jan","Feb","Mar","Apr","May","Jun",
+      "Jul","Aug","Sep","Oct","Nov","Dec"
+    ];
+    return `${months[m - 1]} ${parseInt(day, 10)}`;
+  }
+  function getDateTime(e) {
+    return new Date(`${e.startDate}T${e.startTime || "00:00"}`);
+  }
+  function calcDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(Δφ / 2) ** 2 +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c;
+    return isFinite(d) ? d : Infinity;
+  }
+
+  /* BOTTOM SHEET LOGIC — unchanged */
+  global.joinWaitlistForm = function (venue = "", date = "") {
+    const overlay = document.getElementById("waitlistOverlay");
+    const sheet = document.getElementById("waitlistBottomSheet");
+    const iframe = sheet?.querySelector(".waitlist-form-container");
+    if (!overlay || !sheet || !iframe || !config.waitlistFormId) return;
+
+    const base = `https://api.leadconnectorhq.com/widget/form/${config.waitlistFormId}`;
+    const url = new URL(base);
+    if (venue || date)
+      url.searchParams.set("waitlist", `${venue} ${date}`.trim());
+
+    iframe.src = url.toString();
+    overlay.classList.add("active");
+    sheet.classList.add("active");
+    document.body.style.overflow = "hidden";
+
+    const close = () => {
+      overlay.classList.remove("active");
+      sheet.classList.remove("active");
+      document.body.style.overflow = "";
+    };
+    overlay.onclick = close;
+    sheet.querySelector(".waitlist-close-btn").onclick = close;
+  };
+
+  global.openSoldOutForm = function (venue = "", date = "") {
+    const overlay = document.getElementById("waitlistOverlay");
+    const sheet = document.getElementById("waitlistBottomSheet");
+    const iframe = sheet?.querySelector(".waitlist-form-container");
+    if (!overlay || !sheet || !iframe || !config.soldOutFormId) return;
+
+    const base = `https://api.leadconnectorhq.com/widget/form/${config.soldOutFormId}`;
+    const url = new URL(base);
+    if (venue || date)
+      url.searchParams.set("soldout", `${venue} ${date}`.trim());
+
+    iframe.src = url.toString();
+    overlay.classList.add("active");
+    sheet.classList.add("active");
+    document.body.style.overflow = "hidden";
+
+    const close = () => {
+      overlay.classList.remove("active");
+      sheet.classList.remove("active");
+      document.body.style.overflow = "";
+    };
+    overlay.onclick = close;
+    sheet.querySelector(".waitlist-close-btn").onclick = close;
+  };
+
+  function attachBottomSheetDragHandlers() {
+    document.addEventListener("DOMContentLoaded", () => {
+      const sheet = document.getElementById("waitlistBottomSheet");
+      const overlay = document.getElementById("waitlistOverlay");
+      const header = sheet?.querySelector(".waitlist-bottom-sheet-header");
+      if (!sheet || !overlay || !header) return;
+
+      let dragging = false,
+        startY = 0,
+        currentY = 0;
+
+      const move = (y) => {
+        const delta = Math.max(0, y - startY);
+        sheet.style.transform =
+          window.innerWidth > 768
+            ? `translateX(-50%) translateY(${delta}px)`
+            : `translateY(${delta}px)`;
+        overlay.style.opacity = String(
+          Math.max(0.25, 1 - delta / window.innerHeight)
+        );
+      };
+
+      const end = () => {
+        if (!dragging) return;
+        dragging = false;
+        const delta = Math.max(0, currentY - startY);
+        const threshold = Math.min(150, sheet.offsetHeight * 0.33);
+        sheet.style.transition = "transform .3s ease";
+        overlay.style.transition = "opacity .25s ease";
+
+        if (delta > threshold) {
+          overlay.classList.remove("active");
+          sheet.classList.remove("active");
+          document.body.style.overflow = "";
+        } else {
+          sheet.style.transform =
+            window.innerWidth > 768
+              ? "translateX(-50%) translateY(0)"
+              : "translateY(0)";
+          overlay.style.opacity = "1";
+        }
+
+        setTimeout(() => {
+          sheet.style.transition = "";
+          overlay.style.transition = "";
+        }, 300);
+      };
+
+      header.addEventListener("mousedown", (e) => {
+        dragging = true;
+        startY = e.clientY;
+        sheet.style.transition = "none";
+        overlay.style.transition = "none";
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+
+      const onMouseMove = (e) => {
+        currentY = e.clientY;
+        if (dragging) move(currentY);
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        end();
+      };
+
+      header.addEventListener("touchstart", (e) => {
+        dragging = true;
+        startY = e.touches[0].clientY;
+        sheet.style.transition = "none";
+        overlay.style.transition = "none";
+      });
+
+      header.addEventListener("touchmove", (e) => {
+        currentY = e.touches[0].clientY;
+        if (dragging) move(currentY);
+      });
+
+      header.addEventListener("touchend", end);
+      header.addEventListener("touchcancel", end);
+    });
+  }
+})(window);

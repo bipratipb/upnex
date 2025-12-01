@@ -12,8 +12,6 @@
     soldOutFormId: "",         // used for Sold Out bottom sheet
     primaryColor: "#F2FEC1",
     textColor: "#605858",
-    contentFont: "var(--contentfont)",
-    headlineFont: "var(--headlinefont)",
     nearYouThreshold: 100,
   };
 
@@ -435,3 +433,4 @@
     });
   }
 })(window);
+
